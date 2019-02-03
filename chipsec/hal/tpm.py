@@ -57,6 +57,28 @@ TPM_RID = 0x0F04
 TPM_INTCAP = 0x0014
 TPM_INTENABLE = 0x0008
 
+#TPM2 CRB MODE REGISTER LAYOUT DEFS
+#SECTION 5.5.3 https://www.trustedcomputinggroup.org/wp-content/uploads/PCClientPlatform-TPM-Profile-for-TPM-2-0-v1-03-20-161114_public-review.pdf  
+TPM_LOC_STATE = 0x0000
+TPM_LOC_CTRL = 0x0008 # same as TPM_ACCESS from FIFO. Grants access to TPM on this locality
+TPM_LOC_STS = 0x000C
+TPM_CRB_INTF_ID = 0x0030 # contains DID, VID, RID, among other things
+TPM_CRB_CTRL_EXT = 0x0038
+TPM_CRB_CTRL_REQ = 0x0040
+TPM_CTRL_STS = 0x0044 # status of CRB interface
+TPM_CRB_CTRL_CANCEL = 0x0048
+TPM_CRB_CTRL_START = 0x004C
+TPM_CRB_INT_ENABLE = 0x0050
+TPM_INT_STS = 0x0054
+TPM_CRB_CTRL_CMD_SIZE = 0x0058
+TPM_CRB_CTRL_CMD_LADDR = 0x005C
+TPM_CRB_CTRL_CMD_HADDR = 0x0060
+TPM_CRB_CTRL_RSP_SIZE = 0x0064
+TPM_CRB_CTRL_RSP_ADDR = 0x0068
+
+
+
+
 STATUS = {
   0x00:"Success",
   0x01:"ERROR: Authentication Failed",
@@ -203,6 +225,60 @@ class TPM(hal_base.HALBase):
         self.cs = cs
         self.helper = cs.helper
         self.TPM_BASE = int(self.cs.Cfg.MEMORY_RANGES["TPM"]["address"], 16)
+
+        #NHA Detect if FIFO or CRB interface
+        #Try to read TPM_INTERFACE_ID_0 for FIFO
+        # TPM_CRB_INTF_ID_0 for CRB
+
+    def dump_status_CRB(self,locality):
+        try:
+            Locality = LOCALITY[locality]
+        except:
+            logger().log_bad("Invalid locality value\n")
+
+        sts_address = self.TPM_BASE | Locality |  TPM_CTRL_STS
+        sts_value = self.helper.read_mmio_reg( sts_address, 4 )
+        print "CRB_CTRL_STS: ", sts_value
+    def dump_cmd_bufsz(self,locality):
+        try:
+            Locality = LOCALITY[locality]
+        except:
+            logger().log_bad("Invalid locality value\n")
+        bufsz_address = self.TPM_BASE | Locality | TPM_CRB_CTRL_CMD_SIZE
+        bufsz_value = self.helper.read_mmio_reg(bufsz_address,4)
+
+        print "cmd_bufsz: {:X}".format(bufsz_value)
+
+    def dump_cmd_bufloc(self,locality):
+        try:
+            Locality = LOCALITY[locality]
+        except:
+            logger().log_bad("Invalid locality value\n")
+        bufloc_address_lo = self.TPM_BASE | Locality | TPM_CRB_CTRL_CMD_LADDR
+        bufloc_address_hi = self.TPM_BASE | Locality | TPM_CRB_CTRL_CMD_HADDR
+
+        bufloc_value_lo = self.helper.read_mmio_reg(bufloc_address_lo,4)
+        bufloc_value_hi = self.helper.read_mmio_reg(bufloc_address_hi,4)
+
+
+        print "lo: ", bufloc_value_lo
+        print "hi: {:X}".format(bufloc_address_hi << 32)
+
+        self.helper.write_mmio_reg(bufloc_address_hi << 32, 4,0xDEADBEEF)
+
+    def dump_rsp_bufsz(self,locality):
+        try:
+            Locality = LOCALITY[locality]
+        except:
+            logger().log_bad("Invalid locality value\n")
+        bufsz_address = self.TPM_BASE | Locality | TPM_CRB_CTRL_RSP_SIZE
+        bufsz_value = self.helper.read_mmio_reg(bufsz_address,4)
+
+        print "rsp_bufsz: {:X}".format(bufsz_value)
+
+    
+
+
 
     def command( self, commandName, locality, command_argv ):
         """ 
@@ -375,6 +451,12 @@ class TPM(hal_base.HALBase):
         logger().log( "\tresponseRetry: 0x%s" % bin( sts_value & ( 1<<1 ) )[2] )
         logger().log( "\tReserved     : 0x%s" % bin( sts_value & ( 1<<0 ) )[2] )
 
+ 
+
+
+
+
+
     def dump_didvid( self, locality ):
         """ 
         TPM's Vendor and Device ID
@@ -404,9 +486,17 @@ class TPM(hal_base.HALBase):
             logger().log_bad("Invalid locality value\n")
             return
          
-        rid_address = self.TPM_BASE | Locality| TPM_RID 
-        rid_value = self.helper.read_mmio_reg( rid_address, 1 )  
-        
+        CRB_RID = 0x0030
+        #rid_address = self.TPM_BASE | Locality| TPM_RID 
+        rid_address = self.TPM_BASE + Locality+ CRB_RID
+        #print "base: 0X{:X}  start_off: 0X{:X}".format(self.TPM_BASE,CRB_RID)
+        rid_value = self.helper.read_mmio_reg( rid_address, 8 )  
+        print "{:X}".format(rid_value)
+
+        CRB_CMD_SZ = 0x58
+        cmd_size_address = self.TPM_BASE + CRB_CMD_SZ
+        cmd_buffsz = self.helper.read_mmio_reg(cmd_size_address,4)
+        print "{:X}".format(cmd_buffsz)
         logger().log( "================================================================" )
         logger().log( "                             TPM RID" )
         logger().log( "================================================================" )

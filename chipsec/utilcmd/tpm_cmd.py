@@ -75,12 +75,21 @@ class TPMCommand(BaseCommand):
                 return
             _tpm.command( self.argv[3], self.argv[4], self.argv[5:] )
         elif ('state' == op ):
-            _tpm.dump_access ( self.argv[3] )
-            _tpm.dump_status ( self.argv[3] )
-            _tpm.dump_didvid ( self.argv[3] )
-            _tpm.dump_rid ( self.argv[3] )
-            _tpm.dump_intcap ( self.argv[3] )
-            _tpm.dump_intenable( self.argv[3] )
+            #_tpm.dump_access ( self.argv[3] )
+            #_tpm.dump_status ( self.argv[3] )
+            #_tpm.dump_didvid ( self.argv[3] )
+            #_tpm.dump_rid ( self.argv[3] )
+            #_tpm.dump_intcap ( self.argv[3] )
+            #_tpm.dump_intenable( self.argv[3] )
+
+            _tpm.dump_status_CRB ( self.argv[3] )
+            _tpm.dump_cmd_bufsz(self.argv[3])
+            _tpm.dump_cmd_bufloc(self.argv[3])
+
+
+            _tpm.dump_rsp_bufsz(self.argv[3])
+
+
         else:
             print TPMCommand.__doc__
             return
