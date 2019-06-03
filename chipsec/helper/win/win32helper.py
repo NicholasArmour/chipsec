@@ -61,6 +61,7 @@ from chipsec.helper.basehelper import Helper
 from chipsec.logger import logger, print_buffer
 import chipsec.file
 import chipsec.defines
+from chipsec.hal.uefi_common import guid_str
 
 
 class PCI_BDF(Structure):
@@ -192,12 +193,6 @@ FirmwareTableID_XSDT = 0x54445358
 #
 # Windows 8 NtEnumerateSystemEnvironmentValuesEx (infcls = 2)
 #
-def guid_str(guid0, guid1, guid2, guid3):
-    if sys.version_info[0] < 3:
-        return ( "{:08X}-{:04X}-{:04X}-{:4}-{:6}".format(guid0, guid1, guid2, guid3[:2].encode('hex').upper(), guid3[-6::].encode('hex').upper()) )
-    else:
-        return ( "{:08X}-{:04X}-{:04X}-{:4}-{:6}".format(guid0, guid1, guid2, guid3[:2].hex().upper(), guid3[-6::].hex().upper()) )
-
 class EFI_HDR_WIN( namedtuple('EFI_HDR_WIN', 'Size DataOffset DataSize Attributes guid0 guid1 guid2 guid3') ):
     __slots__ = ()
     def __str__(self):
@@ -215,7 +210,7 @@ def getEFIvariables_NtEnumerateSystemEnvironmentValuesEx2( nvram_buf ):
     start = 0
     buffer = nvram_buf
     bsize = len(buffer)
-    header_fmt = "<IIIIIHH8s"
+    header_fmt = "<IIII4s2s2s8s"
     header_size = struct.calcsize( header_fmt )
     variables = dict()
     off = 0
