@@ -174,7 +174,7 @@ PyLong_AsByteArray.argtypes = [py_object,
                                c_int]
 
 def packl_ctypes( lnum, bitlength ):
-    length = (bitlength + 7)/8
+    length = (bitlength + 7)//8
     a = create_string_buffer( length )
     PyLong_AsByteArray(lnum, a, len(a), 1, 1) # 4th param is for endianness 0 - big, non 0 - little
     return a.raw
@@ -193,7 +193,10 @@ FirmwareTableID_XSDT = 0x54445358
 # Windows 8 NtEnumerateSystemEnvironmentValuesEx (infcls = 2)
 #
 def guid_str(guid0, guid1, guid2, guid3):
-    return ( "{:08X}-{:04X}-{:04X}-{:4}-{:6}".format(guid0, guid1, guid2, guid3[:2].encode('hex').upper(), guid3[-6::].encode('hex').upper()) )
+    if sys.version_info[0] < 3:
+        return ( "{:08X}-{:04X}-{:04X}-{:4}-{:6}".format(guid0, guid1, guid2, guid3[:2].encode('hex').upper(), guid3[-6::].encode('hex').upper()) )
+    else:
+        return ( "{:08X}-{:04X}-{:04X}-{:4}-{:6}".format(guid0, guid1, guid2, guid3[:2].hex().upper(), guid3[-6::].hex().upper()) )
 
 class EFI_HDR_WIN( namedtuple('EFI_HDR_WIN', 'Size DataOffset DataSize Attributes guid0 guid1 guid2 guid3') ):
     __slots__ = ()
@@ -226,7 +229,10 @@ def getEFIvariables_NtEnumerateSystemEnvironmentValuesEx2( nvram_buf ):
         #efi_var_name = "".join( buffer[ start + header_size : start + efi_var_hdr.DataOffset ] ).decode('utf-16-le')
         str_fmt = "{:d}s".format(efi_var_hdr.DataOffset - header_size)
         s, = struct.unpack( str_fmt, buffer[ off + header_size : off + efi_var_hdr.DataOffset ] )
-        efi_var_name = str(s, "utf-16-le", errors="replace").split(u'\u0000')[0]
+        if sys.version_info[0] < 3:
+            efi_var_name = unicode(s, "utf-16-le", errors="replace").split(u'\u0000')[0]
+        else:
+            efi_var_name = str(s, "utf-16-le", errors="replace").split(u'\u0000')[0]
 
         if efi_var_name not in variables.keys():
             variables[efi_var_name] = []
@@ -795,7 +801,10 @@ class Win32Helper(Helper):
     def list_EFI_variables( self, infcls=2 ):
         if logger().DEBUG: logger().log( '[helper] -> NtEnumerateSystemEnvironmentValuesEx( infcls={:d} )..'.format(infcls) )
         efi_vars = create_string_buffer( EFI_VAR_MAX_BUFFER_SIZE )
-        length = packl_ctypes( long(EFI_VAR_MAX_BUFFER_SIZE), 32 )
+        if sys.version_info[0] < 3:
+            length = packl_ctypes( long(EFI_VAR_MAX_BUFFER_SIZE), 32 )
+        else:
+            length = packl_ctypes( int(EFI_VAR_MAX_BUFFER_SIZE), 32 )
         status = self.NtEnumerateSystemEnvironmentValuesEx( infcls, efi_vars, length )
         status = ( ((1 << 32) - 1) & status)
         if (0xC0000023 == status):
