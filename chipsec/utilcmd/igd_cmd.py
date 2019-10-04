@@ -30,6 +30,7 @@ import time
 import chipsec_util
 from chipsec.hal import igd
 from chipsec.command import BaseCommand
+from argparse import ArgumentParser
 
 from chipsec.logger import *
 import chipsec.file
@@ -48,72 +49,63 @@ class IgdCommand(BaseCommand):
     """
 
     def requires_driver(self):
-        # No driver required when printing the util documentation
-        if len(self.argv) < 3:
+        parser = ArgumentParser(usage=IgdCommand.__doc__)
+        subparsers = parser.add_subparsers()
+
+        parser_dmaread = subparsers.add_parser('dmaread')
+        parser_dmaread.add_argument("phys_address",type=lambda sz: int(sz,0),help="physical address to read")
+        parser_dmaread.add_argument("size",type=lambda sz: int(sz,0), nargs='?', default=0x100,help="number of bytes to read")
+        parser_dmaread.add_argument("file",nargs='?',help="output file name. place read bytes here")
+        parser_dmaread.set_defaults(func=self.dmaread)
+
+        parser_dmawrite = subparsers.add_parser('dmawrite')
+        parser_dmawrite.add_argument("phys_address",type=lambda sz: int(sz,0),help="physical address to write")
+        parser_dmawrite.add_argument("size",type=lambda sz: int(sz,0),help="number of bytes to write")
+        parser_dmawrite.add_argument("value",help="value to write, either hex value or file containing hex value")
+        parser_dmawrite.set_defaults(func=self.dmawrite)
+
+
+        parser.parse_args(self.argv[2:],namespace=self)
+        if hasattr(self, 'func'):
+            return True
+        else:
             return False
-        return True
 
-    def run(self):
-        size = 0x100
 
-        if len(self.argv) < 3:
-            print (IgdCommand.__doc__)
+    def dmaread(self):
+        self.logger.log('[CHIPSEC] reading buffer from memory: PA = 0x{:016X}, len = 0x{:X}..'.format(self.phys_address, self.size))
+
+        buffer = self.cs.igd.gfx_aperture_dma_read_write( self.phys_address, self.size )
+        if self.file:
+            chipsec.file.write_file(self.file, buffer)
+        else:
+            print_buffer(buffer)
+    
+
+    def dmawrite(self):
+        if not os.path.exists(self.value): # if value isnt a file, assume hex string
+            try:
+                buffer = bytearray.fromhex(self.value)
+            except ValueError as e:
+                self.logger.error( "incorrect <value> specified: '{}'".format(self.value) )
+                self.logger.error( str(e) )
+                return
+            self.logger.log("[CHIPSEC] read 0x{:X} hex bytes from command-line: {}'".format(len(buffer), self.value))
+        else:
+            buffer = chipsec.file.read_file(self.value)
+            self.logger.log("[CHIPSEC] read 0x{:X} bytes from file '{}'".format(len(buffer), self.value))
+        if len(buffer) < self.size:
+            self.logger.error("number of bytes read (0x{:X}) is less than the specified <length> (0x{:X})".format(len(buffer),self.size))
             return
-
+        self.logger.log( '[CHIPSEC] writing buffer to memory: PA = 0x{:016X}, len = 0x{:X}..'.format(self.phys_address, self.size) )
+        self.cs.igd.gfx_aperture_dma_read_write(self.phys_address,self.size,buffer)
+    
+    def run(self):
         if not self.cs.igd.is_device_enabled():
             self.logger.log( '[CHIPSEC] Looks like internal graphics device is not enabled' )
             return
-
-        op = self.argv[2]
         t = time.time()
-
-        if 'dmaread'     == op:
-            phys_address = int(self.argv[3],16)
-            size         = int(self.argv[4],16) if len(self.argv) > 4 else 0x100
-            self.logger.log( '[CHIPSEC] reading buffer from memory: PA = 0x{:016X}, len = 0x{:X}..'.format(phys_address, size) )
-            buffer = self.cs.igd.gfx_aperture_dma_read_write( phys_address, size )
-            if len(self.argv) > 5:
-                buf_file = self.argv[5]
-                chipsec.file.write_file( buf_file, buffer )
-                self.logger.log( "[CHIPSEC] written 0x{:X} bytes to '{}'".format(len(buffer), buf_file) )
-            else:
-                print_buffer( buffer )
-
-        elif 'dmawrite'    == op:
-            phys_address = int(self.argv[3],16)
-            if len(self.argv) > 4: 
-                size = int(self.argv[4],16)
-            else:
-                self.logger.error( "must specify <length> argument in 'igddma write'" )
-                return
-            if len(self.argv) > 5:
-                buf_file = self.argv[5]
-                if not os.path.exists( buf_file ):
-                    try:
-                      buffer = bytearray.fromhex(buf_file)
-                    except ValueError as e:
-                        self.logger.error( "incorrect <value> specified: '{}'".format(buf_file) )
-                        self.logger.error( str(e) )
-                        return
-                    self.logger.log( "[CHIPSEC] read 0x{:X} hex bytes from command-line: {}'".format(len(buffer), buf_file) )
-                else:
-                    buffer = chipsec.file.read_file( buf_file )
-                    self.logger.log( "[CHIPSEC] read 0x{:X} bytes from file '{}'".format(len(buffer), buf_file) )
-
-                if len(buffer) < size:
-                    self.logger.error( "number of bytes read (0x{:X}) is less than the specified <length> (0x{:X})".format(len(buffer),size) )
-                    return
-
-                self.logger.log( '[CHIPSEC] writing buffer to memory: PA = 0x{:016X}, len = 0x{:X}..'.format(phys_address, size) )
-                self.cs.igd.gfx_aperture_dma_read_write( phys_address, size, buffer )
-            else:
-                self.logger.error( "must specify <buffer>|<file> argument in 'igddma write'" )
-                return
-
-        else:
-                print (IgdCommand.__doc__)
-                return
-
+        self.func()
         self.logger.log( "[CHIPSEC] (mem) time elapsed {:.3f}".format(time.time()-t) )
 
 commands = { 'igd': IgdCommand }
