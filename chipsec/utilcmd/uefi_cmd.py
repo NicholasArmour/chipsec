@@ -26,6 +26,8 @@ The uefi command provides access to UEFI variables, both on the live system and 
 """
 
 import os
+import shutil
+import glob
 import time
 
 import chipsec_util
@@ -46,6 +48,7 @@ class UEFICommand(BaseCommand):
     >>> chipsec_util uefi var-list
     >>> chipsec_util uefi var-find <name>|<GUID>
     >>> chipsec_util uefi var-read|var-write|var-delete <name> <GUID> <efi_variable_file>
+    >>> chipsec_util uefi decode <rom_file> [fwtype]
     >>> chipsec_util uefi decode <rom_file> [fwtype]
     >>> chipsec_util uefi nvram[-auth] <rom_file> [fwtype]
     >>> chipsec_util uefi keys <keyvar_file>
@@ -72,6 +75,7 @@ class UEFICommand(BaseCommand):
     """
 
     def requires_driver(self):
+        return False
         # No driver required when printing the util documentation
         if len(self.argv) < 3:
             return False
@@ -236,12 +240,67 @@ class UEFICommand(BaseCommand):
                 self.logger.error( "Could not find file '{}'".format(filename) )
                 return
 
-            self.logger.log( "[CHIPSEC] Parsing EFI volumes from '{}'..".format(filename) )
             _orig_logname = self.logger.LOG_FILE_NAME
             self.logger.set_log_file( filename + '.UEFI.lst' )
             cur_dir = self.cs.helper.getcwd()
-            decode_uefi_region(_uefi, cur_dir, filename, fwtype)
-            self.logger.set_log_file( _orig_logname )
+            if not os.path.exists(os.path.join(cur_dir,filename + '.dir')):
+                self.logger.log( "[CHIPSEC] Parsing EFI volumes from '{}'..".format(filename) )
+                decode_uefi_region(_uefi, cur_dir, filename, fwtype)
+                self.logger.set_log_file( _orig_logname )
+            else:
+                print("Decompression results already found for {}, delete the {}.dir to re-decompress".format(filename,filename))
+
+            # >>> chipsec_util uefi decode <rom_file> [fwtype] [out_dir] [binary_type] [GUID] [binary_name]
+            if len(self.argv) > 5:
+                import json
+                import uuid
+                f = open(filename + '.UEFI.json')
+                jsonf = json.load(f)
+                MODULE_TYPES_DICT = {'DXE_DRIVER': 0x7,'DXE_SMM_DRIVER': 0xA, 'PEI_CORE': 0x4, 'PEIM': 0x6}
+                # make output directory
+                out_dir = self.argv[5]
+                if not os.path.exists(out_dir):
+                    os.makedirs(out_dir)
+                for arg in self.argv[6:]:
+                    if arg in MODULE_TYPES_DICT:
+                        # find all binaries of arg type
+                        file_type = MODULE_TYPES_DICT[arg]
+                        for j in jsonf:
+                            for child in j['children']:
+                                if 'ui_string' in child and child['Type'] == file_type:
+                                    # get 0*_S_COMPRESSION.dir name
+                                    try:
+                                        compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
+                                        srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
+                                    except IndexError:
+                                        srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
+                                    
+                                    shutil.copy(srcfile,out_dir)
+                    else:
+                        try:
+                            guid = str(uuid.UUID(arg))
+                            for j in jsonf:
+                                for child in j['children']:
+                                    if 'Guid' in child and child['Guid'].casefold() == guid.casefold():
+                                        try:
+                                            compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
+                                            srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
+                                        except IndexError:
+                                            srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
+                                        shutil.copy(srcfile,out_dir)
+
+                        except ValueError:
+                            # if its not a MODULE_TYPE, or a GUID, assume its the name of a binary
+                            #print ("binary name: {}".format(arg))
+                            for j in jsonf:
+                                for child in j['children']:
+                                    if 'ui_string' in child and child['ui_string'].casefold() == arg.casefold():
+                                        try:
+                                            compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
+                                            srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
+                                        except IndexError:
+                                            srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
+                                        shutil.copy(srcfile,out_dir)
 
         elif ( 'keys' == op ):
 
