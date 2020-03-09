@@ -39,8 +39,15 @@ from chipsec.hal.uefi          import *
 from chipsec.hal.spi_uefi      import *
 
 from chipsec.command    import BaseCommand
+import json
+json_objs = []
+def read_json(json_obj):
+    json_objs.append(json_obj)
+    if 'children' in json_obj:
+        for c in json_obj['children']:
+            read_json(c)
 
-
+    
 # Unified Extensible Firmware Interface (UEFI)
 class UEFICommand(BaseCommand):
     """
@@ -250,12 +257,17 @@ class UEFICommand(BaseCommand):
             else:
                 print("Decompression results already found for {}, delete the {}.dir to re-decompress".format(filename,filename))
 
+           
+
             # >>> chipsec_util uefi decode <rom_file> [fwtype] [out_dir] [binary_type] [GUID] [binary_name]
             if len(self.argv) > 5:
-                import json
-                import uuid
+                 # read all the json objects
                 f = open(filename + '.UEFI.json')
                 jsonf = json.load(f)
+                for j in jsonf:
+                    read_json(j)
+                import uuid
+                
                 MODULE_TYPES_DICT = {'DXE_DRIVER': 0x7,'DXE_SMM_DRIVER': 0xA, 'PEI_CORE': 0x4, 'PEIM': 0x6}
                 # make output directory
                 out_dir = self.argv[5]
@@ -265,42 +277,38 @@ class UEFICommand(BaseCommand):
                     if arg in MODULE_TYPES_DICT:
                         # find all binaries of arg type
                         file_type = MODULE_TYPES_DICT[arg]
-                        for j in jsonf:
-                            for child in j['children']:
-                                if 'ui_string' in child and child['Type'] == file_type:
-                                    # get 0*_S_COMPRESSION.dir name
-                                    try:
-                                        compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
-                                        srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
-                                    except IndexError:
-                                        srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
-                                    
-                                    shutil.copy(srcfile,out_dir)
+                        print("Finding all {}, type = {}".format(arg,file_type))
+
+                        for j in json_objs:
+                            if 'Type' in j and j['Type'] == file_type and 'class' in j and j['class'] == 'EFI_FILE' and 'ui_string' in j:
+                                try:
+                                    last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                    srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
+                                except IndexError:
+                                    srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
+                                shutil.copy(srcfile,out_dir)
                     else:
                         try:
                             guid = str(uuid.UUID(arg))
-                            for j in jsonf:
-                                for child in j['children']:
-                                    if 'Guid' in child and child['Guid'].casefold() == guid.casefold():
-                                        try:
-                                            compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
-                                            srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
-                                        except IndexError:
-                                            srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
-                                        shutil.copy(srcfile,out_dir)
+                            for j in json_objs:
+                                if 'Guid' in j and j['Guid'].casefold() == guid.casefold():
+                                    try:
+                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                        srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
+                                    except IndexError:
+                                        srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
+                                    shutil.copy(srcfile,out_dir)
 
                         except ValueError:
                             # if its not a MODULE_TYPE, or a GUID, assume its the name of a binary
-                            #print ("binary name: {}".format(arg))
-                            for j in jsonf:
-                                for child in j['children']:
-                                    if 'ui_string' in child and child['ui_string'].casefold() == arg.casefold():
-                                        try:
-                                            compression_dir = glob.glob(os.path.join(child['file_path'] + '.dir','*COMPRESSION*.dir'))[0].split("\\")[-1]
-                                            srcfile = os.path.join(child['file_path'] + '.dir',compression_dir,child['ui_string'] + '.efi')
-                                        except IndexError:
-                                            srcfile = os.path.join(child['file_path'] + '.dir',child['ui_string'] + '.efi')
-                                        shutil.copy(srcfile,out_dir)
+                            for j in json_objs:
+                                if 'ui_string' in j and j['ui_string'].casefold() == arg.casefold():
+                                    try:
+                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                        srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
+                                    except IndexError:
+                                        srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
+                                    shutil.copy(srcfile,out_dir)
 
         elif ( 'keys' == op ):
 
