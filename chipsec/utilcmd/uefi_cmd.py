@@ -178,23 +178,10 @@ class UEFICommand(BaseCommand):
 
         parser.parse_args(self.argv[2:], namespace=self)
 
-        #TODO Implement this....
-        '''
-        # No driver required when printing the util documentation
-        if len(self.argv) < 3:
+        # No driver for decode functionality
+        if self.argv[2] in ('decode'):
             return False
-        # Always load the driver unless native mode is requested
-        load_driver = True
-        if '-n' in self.argv:
-            self.argv.remove('-n')
-            load_driver = False
-        # Driver is always required for these specific commands to run
-        if len(self.argv) >= 3 and self.argv[2] in ('tables','s3bootscript'):
-            load_driver = True
-        return load_driver
-        '''
-        load_driver = True
-        return load_driver
+        return True
         
 
     
