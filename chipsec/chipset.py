@@ -502,12 +502,15 @@ class Chipset:
             else:
                 return '{:02X}{}'.format(extfamily,ret)
 
-    def init( self, platform_code, req_pch_code, start_driver, driver_exists=None, to_file=None, from_file=None ):
+    def init( self, platform_code, req_pch_code, start_driver, driver_exists=None, to_file=None, from_file=None, custom_xml=None ):
 
         _unknown_platform = False
         self.reqs_pch = False
         self.helper.start(start_driver, driver_exists, to_file, from_file)
         logger().log( '[CHIPSEC] API mode: {}'.format('using OS native API (not using CHIPSEC kernel module)' if self.use_native_api() else 'using CHIPSEC kernel module API') )
+
+        
+            
 
         self.vid, self.did, self.rid, self.pch_vid, self.pch_did, self.pch_rid = self.detect_platform()
         if platform_code is None:
@@ -570,8 +573,15 @@ class Chipset:
             msg = 'Unsupported Platform: VID = 0x{:04X}, DID = 0x{:04X}, RID = 0x{:02X}'.format(self.vid,self.did,self.rid)
             logger().error( msg )
             raise UnknownChipsetError (msg)
-        if not _unknown_platform: # don't intialize config if platform is unknown
+        if custom_xml != None:
+            self.custom_xml = custom_xml
+            # load all files in custom_xml
+            print("loading custom_xml")
             self.init_cfg()
+        elif not _unknown_platform: # don't intialize config if platform is unknown
+            print("standard platform config")
+            self.init_cfg()
+        
         if self.reqs_pch and _unknown_pch and start_driver:
             msg = 'Chipset requires a supported PCH to be loaded: VID = 0x{:04X}, DID = 0x{:04X}, RID = 0x{:02X}'.format(self.pch_vid,self.pch_did,self.pch_rid)
             logger().error( msg )
@@ -659,6 +669,10 @@ class Chipset:
             platform_files.extend([x for x in _cfg_files if fnmatch.fnmatch(os.path.basename(x), '{}*.xml'.format(plat)) or os.path.basename(x).startswith(PCH_CODE_PREFIX.lower())])
         loaded_files.extend([x for x in _cfg_files if x not in loaded_files and x not in platform_files])
 
+        if self.custom_xml is not None:
+            loaded_files = self.custom_xml
+            print("loaded_files: {}".format(loaded_files))
+
         # Load all configuration files for this platform.
         if logger().DEBUG: logger().log("[*] Loading Configuration Files:")
         for _xml in loaded_files:
@@ -666,13 +680,15 @@ class Chipset:
 
         # Load Bus numbers for this platform.
         if logger().DEBUG: logger().log("[*] Discovering Bus Configuration:")
-        self.init_cfg_bus()
+        #self.init_cfg_bus()
+        #print("post init_cfg_bus")
 
         self.Cfg.XML_CONFIG_LOADED = True
 
 
     def init_cfg_xml(self, fxml, code, pch_code):
         import xml.etree.ElementTree as ET
+        print('fxml: {}'.format(fxml))
         if not os.path.exists( fxml ): return
         if logger().DEBUG: logger().log( "[*] looking for platform config in '{}'..".format(fxml) )
         tree = ET.parse( fxml )
@@ -687,7 +703,7 @@ class Chipset:
                         self.reqs_pch = True
             elif pch_code == _cfg.attrib['platform'].lower():
                 if logger().DEBUG: logger().log("[*] loading '{}' PCH config from '{}'..".format(pch_code,fxml))
-            else: continue
+            elif self.custom_xml is None: continue
 
             if logger().DEBUG: logger().log( "[*] loading integrated devices/controllers.." )
             for _pci in _cfg.iter('pci'):
