@@ -273,8 +273,27 @@ class UEFICommand(BaseCommand):
                 out_dir = self.argv[5]
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
+                if os.name == 'nt':
+                    splitstr = "\\"
+                else:
+                    splitstr = "/"
                 for arg in self.argv[6:]:
-                    if arg in MODULE_TYPES_DICT:
+                    if arg  == 'EFI_FILE': # get all binaries
+                        for j in json_objs:
+                            if 'class' in j and j['class'] == 'EFI_FILE' and 'ui_string' in j:
+                                try:
+                                    last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split(splitstr)[-1]
+                                    srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
+                                except IndexError:
+                                    srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
+
+                                try:
+                                    shutil.copy(srcfile,out_dir)
+                                except FileNotFoundError:
+                                    continue
+
+
+                    elif arg in MODULE_TYPES_DICT:
                         # find all binaries of arg type
                         file_type = MODULE_TYPES_DICT[arg]
                         print("Finding all {}, type = {}".format(arg,file_type))
@@ -282,7 +301,7 @@ class UEFICommand(BaseCommand):
                         for j in json_objs:
                             if 'Type' in j and j['Type'] == file_type and 'class' in j and j['class'] == 'EFI_FILE' and 'ui_string' in j:
                                 try:
-                                    last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                    last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split(splitstr)[-1]
                                     srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
                                 except IndexError:
                                     srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
@@ -293,7 +312,7 @@ class UEFICommand(BaseCommand):
                             for j in json_objs:
                                 if 'Guid' in j and j['Guid'].casefold() == guid.casefold():
                                     try:
-                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split(splitstr)[-1]
                                         srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
                                     except IndexError:
                                         srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
@@ -304,7 +323,7 @@ class UEFICommand(BaseCommand):
                             for j in json_objs:
                                 if 'ui_string' in j and j['ui_string'].casefold() == arg.casefold():
                                     try:
-                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split("\\")[-1]
+                                        last_dir = glob.glob(os.path.join(j['file_path'] + '.dir','*.dir'))[0].split(splitstr)[-1]
                                         srcfile = os.path.join(j['file_path'] + '.dir',last_dir,j['ui_string'] + '.efi')
                                     except IndexError:
                                         srcfile = os.path.join(j['file_path'] + '.dir',j['ui_string'] + '.efi')
